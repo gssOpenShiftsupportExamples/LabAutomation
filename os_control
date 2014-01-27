@@ -1,0 +1,515 @@
+#!/bin/bash
+
+# This script is built to manage 3 openshift instances hosted on Openstack.
+# The script expects there to be cloud-init scripts already written for each envrionment.
+# The cloud-init scripts are expected to run all necessary openshift-side operations
+# This script simply controls the openstack spinning up and down of instances.
+
+# HOW DO I USE THIS?!
+# 1) Make sure you have cloud-init scripts that are tailored for each environment.
+#    In this example, the cloud-init scripts download customized openshift install
+#    scripts from an external source.
+# 2) Fill out the "GLOBAL VARIABLES" below. These are openstack authentication variables.
+# 3) For each project you are running, fill out the variables underneath each "PROJECT VARIABLES" section
+# 4) Call the script to create/destroy the isntances for you.
+#    Run SCRIPTNAME --help for more information
+
+
+# =======================
+#  GLOBAL VARIABLES 
+# =======================
+
+# Openstack Credentials
+USERNAME=
+PASSWORD=
+
+# Openstack API Url
+# This should be in the format: http://IP_ADDR:PORT/v2.0/
+OS_AUTH_URL=http://10.10.73.6:35357/v2.0/
+
+
+
+# =======================
+#  FIRST PROJECT VARIABLES 
+# =======================
+
+# Name of the tenant installing openshift in
+P1_PROJECT_NAME="Pegasus"
+
+# Name of the tenant network that will be used
+P1_NETWORK_NAME="Pegasus-network"
+
+# Name of the Red Hat Enterprise Linux 6.5 image that will be used
+P1_IMAGE_NAME='RHEL-6.5'
+
+# Name of the security group to use
+P1_SECURITY_GROUP="default"
+
+# Names of the flavors that will be applied to each type of system
+P1_DNS_FLAVOR=ose.broker
+P1_BROKER_FLAVOR=ose.broker
+P1_NODE_FLAVOR=ose.node
+P1_SERVICES_FLAVOR=ose.mongo-activemq
+
+# Domain each instance should be brought up under.
+# This will be used for openshit, so if the domain is set to "example.com" the
+# broker's fqdn will be broker.example.com
+P1_DOMAIN="pegasus.com"
+
+# LOCAL_USER_DATA_PATH should be set to the path where the scripts are located.
+# For this example, I have all my used-data scripts in /home/tiwillia/html/pegasus
+P1_LOCAL_USER_DATA_PATH="/home/tiwillia/html"
+P1_USER_DATA_DNS_PATH="${P1_LOCAL_USER_DATA_PATH}/pegasus/user-data/user-data-dns"
+P1_USER_DATA_BROKER_PATH="${P1_LOCAL_USER_DATA_PATH}/pegasus/user-data/user-data-broker"
+P1_USER_DATA_SERVICES1_PATH="${P1_LOCAL_USER_DATA_PATH}/pegasus/user-data/user-data-services1"
+P1_USER_DATA_SERVICES2_PATH="${P1_LOCAL_USER_DATA_PATH}/pegasus/user-data/user-data-services2"
+P1_USER_DATA_SERVICES3_PATH="${P1_LOCAL_USER_DATA_PATH}/pegasus/user-data/user-data-services3"
+P1_USER_DATA_NODE1_PATH="${P1_LOCAL_USER_DATA_PATH}/pegasus/user-data/user-data-node1"
+P1_USER_DATA_NODE2_PATH="${P1_LOCAL_USER_DATA_PATH}/pegasus/user-data/user-data-node2"
+P1_USER_DATA_NODE3_PATH="${P1_LOCAL_USER_DATA_PATH}/pegasus/user-data/user-data-node3"
+P1_USER_DATA_NODE4_PATH="${P1_LOCAL_USER_DATA_PATH}/pegasus/user-data/user-data-node4"
+
+# Below, set the floating ip for each instance
+# Currently, these MUST be used.
+P1_IP_DNS="10.10.73.32"
+P1_IP_BROKER="10.10.73.33"
+P1_IP_SERVICES1="10.10.73.34"
+P1_IP_SERVICES2="10.10.73.35"
+P1_IP_SERVICES3="10.10.73.36"
+P1_IP_NODE1="10.10.73.37"
+P1_IP_NODE2="10.10.73.38"
+P1_IP_NODE3="10.10.73.39"
+P1_IP_NODE4="10.10.73.40"
+
+
+# =======================
+#  SECOND PROJECT VARIABLES 
+# =======================
+
+# Name of the tenant installing openshift in
+P2_PROJECT_NAME="Intrepid"
+
+# Name of the tenant network that will be used
+P2_NETWORK_NAME="Intrepid-network"
+
+# Name of the Red Hat Enterprise Linux image that will be used
+P2_IMAGE_NAME='RHEL-6.4'
+
+# Name of the security group to use
+P2_SECURITY_GROUP="default"
+
+# Names of the flavors that will be applied to each type of system
+P2_DNS_FLAVOR=ose.broker
+P2_BROKER_FLAVOR=ose.broker
+P2_NODE_FLAVOR=ose.node
+P2_SERVICES_FLAVOR=ose.mongo-activemq
+
+# Domain each instance should be brought up under.
+# This will be used for openshit, so if the domain is set to "example.com" the
+# broker's fqdn will be broker.example.com
+P2_DOMAIN="intrepid.com"
+
+# LOCAL_USER_DATA_PATH should be set to the path where the scripts are located.
+# For this example, I have all my used-data scripts in /home/tiwillia/html/pegasus
+P2_LOCAL_USER_DATA_PATH="/home/tiwillia/html"
+P2_USER_DATA_DNS_PATH="${P2_LOCAL_USER_DATA_PATH}/intrepid/user-data/user-data-dns"
+P2_USER_DATA_BROKER_PATH="${P2_LOCAL_USER_DATA_PATH}/intrepid/user-data/user-data-broker"
+P2_USER_DATA_SERVICES1_PATH="${P2_LOCAL_USER_DATA_PATH}/intrepid/user-data/user-data-services1"
+P2_USER_DATA_SERVICES2_PATH="${P2_LOCAL_USER_DATA_PATH}/intrepid/user-data/user-data-services2"
+P2_USER_DATA_SERVICES3_PATH="${P2_LOCAL_USER_DATA_PATH}/intrepid/user-data/user-data-services3"
+P2_USER_DATA_NODE1_PATH="${P2_LOCAL_USER_DATA_PATH}/intrepid/user-data/user-data-node1"
+P2_USER_DATA_NODE2_PATH="${P2_LOCAL_USER_DATA_PATH}/intrepid/user-data/user-data-node2"
+P2_USER_DATA_NODE3_PATH="${P2_LOCAL_USER_DATA_PATH}/intrepid/user-data/user-data-node3"
+P2_USER_DATA_NODE4_PATH="${P2_LOCAL_USER_DATA_PATH}/intrepid/user-data/user-data-node4"
+
+# Below, set the floating ip for each instance
+# Currently, these MUST be used.
+P2_IP_DNS="10.10.73.52"
+P2_IP_BROKER="10.10.73.53"
+P2_IP_SERVICES1="10.10.73.54"
+P2_IP_SERVICES2="10.10.73.55"
+P2_IP_SERVICES3="10.10.73.56"
+P2_IP_NODE1="10.10.73.57"
+P2_IP_NODE2="10.10.73.58"
+P2_IP_NODE3="10.10.73.59"
+P2_IP_NODE4="10.10.73.60"
+
+
+# =======================
+#  THIRD PROJECT VARIABLES 
+# =======================
+
+# Name of the tenant installing openshift in
+P3_PROJECT_NAME="Voyager"
+
+# Name of the tenant network that will be used
+P3_NETWORK_NAME="Voyager-network"
+
+# Name of the Red Hat Enterprise Linux image that will be used
+P3_IMAGE_NAME='RHEL-6.4'
+
+# Name of the security group to use
+P3_SECURITY_GROUP="default"
+
+# Names of the flavors that will be applied to each type of system
+P3_DNS_FLAVOR=ose.broker
+P3_BROKER_FLAVOR=ose.broker
+P3_NODE_FLAVOR=ose.node
+P3_SERVICES_FLAVOR=ose.mongo-activemq
+
+# Domain each instance should be brought up under.
+# This will be used for openshit, so if the domain is set to "example.com" the
+# broker's fqdn will be broker.example.com
+P3_DOMAIN="voyager.com"
+
+# LOCAL_USER_DATA_PATH should be set to the path where the scripts are located.
+# For this example, I have all my used-data scripts in /home/tiwillia/html/pegasus
+P3_LOCAL_USER_DATA_PATH="/home/tiwillia/html"
+P3_USER_DATA_DNS_PATH="${P3_LOCAL_USER_DATA_PATH}/voyager/user-data/user-data-dns"
+P3_USER_DATA_BROKER_PATH="${P3_LOCAL_USER_DATA_PATH}/voyager/user-data/user-data-broker"
+P3_USER_DATA_SERVICES1_PATH="${P3_LOCAL_USER_DATA_PATH}/voyager/user-data/user-data-services1"
+P3_USER_DATA_SERVICES2_PATH="${P3_LOCAL_USER_DATA_PATH}/voyager/user-data/user-data-services2"
+P3_USER_DATA_SERVICES3_PATH="${P3_LOCAL_USER_DATA_PATH}/voyager/user-data/user-data-services3"
+P3_USER_DATA_NODE1_PATH="${P3_LOCAL_USER_DATA_PATH}/voyager/user-data/user-data-node1"
+P3_USER_DATA_NODE2_PATH="${P3_LOCAL_USER_DATA_PATH}/voyager/user-data/user-data-node2"
+P3_USER_DATA_NODE3_PATH="${P3_LOCAL_USER_DATA_PATH}/voyager/user-data/user-data-node3"
+P3_USER_DATA_NODE4_PATH="${P3_LOCAL_USER_DATA_PATH}/voyager/user-data/user-data-node4"
+
+# Below, set the floating ip for each instance
+# Currently, these MUST be used.
+P3_IP_DNS="10.10.73.42"
+P3_IP_BROKER="10.10.73.43"
+P3_IP_SERVICES1="10.10.73.44"
+P3_IP_SERVICES2="10.10.73.45"
+P3_IP_SERVICES3="10.10.73.46"
+P3_IP_NODE1="10.10.73.47"
+P3_IP_NODE2="10.10.73.48"
+P3_IP_NODE3="10.10.73.49"
+P3_IP_NODE4="10.10.73.50"
+
+
+
+
+# =====================================================================
+#  END CONFIGURATION 
+# =====================================================================
+ 
+
+
+
+# Set variables based on constants
+# export OS_TENANT_NAME=${PROJECT_NAME}
+# export OS_USERNAME=${USERNAME}
+# export OS_PASSWORD=${PASSWORD}
+
+set_variables()
+{
+if [ $project == "p1" ]; then
+  project_name=$P1_PROJECT_NAME
+  network_name=$P1_NETWORK_NAME
+  image_name=$P1_IMAGE_NAME
+  security_group=$P1_SECURITY_GROUP
+  dns_flavor=$P1_DNS_FLAVOR
+  broker_flavor=$P1_BROKER_FLAVOR
+  node_flavor=$P1_NODE_FLAVOR
+  services_flavor=$P1_SERVICES_FLAVOR
+  domain=$P1_DOMAIN
+  user_data_dns_path=$P1_USER_DATA_DNS_PATH
+  user_data_broker_path=$P1_USER_DATA_BROKER_PATH
+  user_data_services1_path=$P1_USER_DATA_SERVICES1_PATH
+  user_data_services2_path=$P1_USER_DATA_SERVICES2_PATH
+  user_data_services3_path=$P1_USER_DATA_SERVICES3_PATH
+  user_data_node1_path=$P1_USER_DATA_NODE1_PATH
+  user_data_node2_path=$P1_USER_DATA_NODE2_PATH
+  user_data_node3_path=$P1_USER_DATA_NODE3_PATH
+  user_data_node4_path=$P1_USER_DATA_NODE4_PATH
+  ip_dns=$P1_IP_DNS
+  ip_broker=$P1_IP_BROKER
+  ip_services1=$P1_IP_SERVICES1
+  ip_services2=$P1_IP_SERVICES2
+  ip_services3=$P1_IP_SERVICES3
+  ip_node1=$P1_IP_NODE1
+  ip_node2=$P1_IP_NODE2
+  ip_node3=$P1_IP_NODE3
+  ip_node4=$P1_IP_NODE4
+elif [ $project == "p2" ]; then
+  project_name=$P2_PROJECT_NAME
+  network_name=$P2_NETWORK_NAME
+  image_name=$P2_IMAGE_NAME
+  security_group=$P2_SECURITY_GROUP
+  dns_flavor=$P2_DNS_FLAVOR
+  broker_flavor=$P2_BROKER_FLAVOR
+  node_flavor=$P2_NODE_FLAVOR
+  services_flavor=$P2_SERVICES_FLAVOR
+  domain=$P2_DOMAIN
+  user_data_dns_path=$P2_USER_DATA_DNS_PATH
+  user_data_broker_path=$P2_USER_DATA_BROKER_PATH
+  user_data_services1_path=$P2_USER_DATA_SERVICES1_PATH
+  user_data_services2_path=$P2_USER_DATA_SERVICES2_PATH
+  user_data_services3_path=$P2_USER_DATA_SERVICES3_PATH
+  user_data_node1_path=$P2_USER_DATA_NODE1_PATH
+  user_data_node2_path=$P2_USER_DATA_NODE2_PATH
+  user_data_node3_path=$P2_USER_DATA_NODE3_PATH
+  user_data_node4_path=$P2_USER_DATA_NODE4_PATH
+  ip_dns=$P2_IP_DNS
+  ip_broker=$P2_IP_BROKER
+  ip_services1=$P2_IP_SERVICES1
+  ip_services2=$P2_IP_SERVICES2
+  ip_services3=$P2_IP_SERVICES3
+  ip_node1=$P2_IP_NODE1
+  ip_node2=$P2_IP_NODE2
+  ip_node3=$P2_IP_NODE3
+  ip_node4=$P2_IP_NODE4
+elif [ $project == "p3" ]; then
+  project_name=$P3_PROJECT_NAME
+  network_name=$P3_NETWORK_NAME
+  image_name=$P3_IMAGE_NAME
+  security_group=$P3_SECURITY_GROUP
+  dns_flavor=$P3_DNS_FLAVOR
+  broker_flavor=$P3_BROKER_FLAVOR
+  node_flavor=$P3_NODE_FLAVOR
+  services_flavor=$P3_SERVICES_FLAVOR
+  domain=$P3_DOMAIN
+  user_data_dns_path=$P3_USER_DATA_DNS_PATH
+  user_data_broker_path=$P3_USER_DATA_BROKER_PATH
+  user_data_services1_path=$P3_USER_DATA_SERVICES1_PATH
+  user_data_services2_path=$P3_USER_DATA_SERVICES2_PATH
+  user_data_services3_path=$P3_USER_DATA_SERVICES3_PATH
+  user_data_node1_path=$P3_USER_DATA_NODE1_PATH
+  user_data_node2_path=$P3_USER_DATA_NODE2_PATH
+  user_data_node3_path=$P3_USER_DATA_NODE3_PATH
+  user_data_node4_path=$P3_USER_DATA_NODE4_PATH
+  ip_dns=$P3_IP_DNS
+  ip_broker=$P3_IP_BROKER
+  ip_services1=$P3_IP_SERVICES1
+  ip_services2=$P3_IP_SERVICES2
+  ip_services3=$P3_IP_SERVICES3
+  ip_node1=$P3_IP_NODE1
+  ip_node2=$P3_IP_NODE2
+  ip_node3=$P3_IP_NODE3
+  ip_node4=$P3_IP_NODE4
+fi
+export OS_USERNAME=$USERNAME
+export OS_TENANT_NAME=$project_name
+export OS_PASSWORD=$PASSWORD
+export OS_AUTH_URL=$OS_AUTH_URL
+network_id=$(nova network-list | grep ${network_name} | cut -d\  -f2)
+}
+
+# Arguments: 1
+#   instance_name:    This should be the fqdn of the instance
+#generate_install_script()
+#{
+#  # When doing this, I can use sed -i '2i<string>' to insert at the second line of a file  
+#}
+
+# Arguments: 1
+#   instance_name:    This should be the fqdn of the instance.
+#     example:        dns.pegasus.com OR services3.voyager.com
+associate_ip()
+{
+  instance_name=$1
+  case $instance_name in
+    dns.${domain})
+      ip=${ip_dns};;
+    broker.${domain})
+      ip=${ip_broker};;
+    services1.${domain})
+      ip=${ip_services1};;
+    services2.${domain})
+      ip=${ip_services2};;
+    services3.${domain})
+      ip=${ip_services3};;
+    node1.${domain})
+      ip=${ip_node1};;
+    node2.${domain})
+      ip=${ip_node2};;
+    node3.${domain})
+      ip=${ip_node3};;
+    node4.${domain})
+      ip=${ip_node4};;
+    *)
+      echo "Instance name ${instance_name} not recognized, skipping ip allocation"
+      exit 1
+  esac
+  ip_id=$(neutron floatingip-list | grep $ip | cut -d\  -f2)
+  instance_local_ip=$(nova show $instance_name | grep network | cut -d\| -f3 | cut -d\  -f2)
+  while [[ -z $instance_local_ip ]]; do
+    sleep 10
+    instance_local_ip=$(nova show $instance_name | grep network | cut -d\| -f3 | cut -d\  -f2)
+  done
+  echo "Local ip of $instance_name: $instance_local_ip"
+  instance_port_id=$(neutron port-list | grep $instance_local_ip | cut -d\  -f2)
+  neutron floatingip-associate $ip_id $instance_port_id
+}
+
+# Arguments: 1
+#   instance_short_name:   This should be the hostname of the instance.
+#     example:             dns OR services3
+start_instance()
+{
+  instance_short_name=$1
+  instance_name="$instance_short_name.${domain}"
+  case $instance_short_name in
+    dns)
+      flavor=${dns_flavor}
+      user_data_path=${user_data_dns_path};;
+    broker)
+      flavor=${broker_flavor}
+      user_data_path=${user_data_broker_path};;
+    services1)
+      flavor=${services_flavor}
+      user_data_path=${user_data_services1_path};;
+    services2)
+      flavor=${services_flavor}
+      user_data_path=${user_data_services2_path};;
+    services3)
+      flavor=${services_flavor}
+      user_data_path=${user_data_services3_path};;
+    node1)
+      flavor=${node_flavor}
+      user_data_path=${user_data_node1_path};;
+    node2)
+      flavor=${node_flavor}
+      user_data_path=${user_data_node2_path};;
+    node3)
+      flavor=${node_flavor}
+      user_data_path=${user_data_node3_path};;
+    node4)
+      flavor=${node_flavor}
+      user_data_path=${user_data_node4_path};;
+  esac
+  nova boot --flavor "${flavor}" --image "${image_name}" --nic net-id=${network_id} --user-data "${user_data_path}" --security_group "${security_group}" ${instance_name}
+  sleep 10
+  associate_ip ${instance_name}
+}
+
+destroy_instance()
+{
+  echo "Bringing down $i.${domain}."
+  nova delete $i.${domain}
+  if [[ $? != 0 ]]; then
+    echo "Failed to bring down $i.${domain}."
+  else
+    echo "Brought down $i.${domain}."
+  fi
+}
+
+usage()
+{
+  echo "Usage: os_control PROJECT_NAME ACTION"
+  echo "  or:  os_control PROJECT_NAME ACTION [INSTANCE_NAME]"
+  echo "Run through ACTION on PROJECT_NAME or ACTION on INSTANCE_NAME in PROJECT_NAME"
+  echo ""
+  echo "A project name and action must be supplied."
+  echo "The available actions are:"
+  echo "  start               Start the project or instance."
+  echo "  stop|destroy        Destroy the project or instance."
+  echo "  reinstall|restart   Destroy, then start the project or instance."
+  echo ""
+  echo "For additional assistance, contact:"
+  echo "  Timothy Williams | email: tiwillia@redhat.com | irc: tim"
+}
+
+# =======================
+# Custom to my environment
+
+# Arguments: 0
+# Start pegasus
+start_project()
+{
+echo "Starting dns..."
+start_instance "dns"
+echo "Starting services2 and 3..."
+start_instance "services2"
+start_instance "services3"
+echo "Starting all four nodes..."
+start_instance "node1"
+start_instance "node2"
+start_instance "node3"
+start_instance "node4"
+echo "Sleeping to allow time for the other services nodes to come up before starting the last one"
+echo "Waiting 2 minutes..."
+sleep 60
+echo "1 more minute..."
+sleep 60
+echo "Starting services1..."
+start_instance "services1"
+echo "Starting the broker..."
+start_instance "broker"
+echo "Complete!
+"
+}
+
+# Arguments: 0
+# Destroy pegasus
+destroy_project()
+{
+  echo "Bringing down $project_name..."
+  for i in dns broker services1 services2 services3 node1 node2 node3 node4; do
+     destroy_instance $i
+  done
+}
+
+# Arguments: 0
+# Destory then start pegasus
+reinstall_project()
+{
+  echo "Re-installing $project_name..."
+  destroy_project
+  start_project
+}
+
+# =======================
+
+# Parse through command line arguments
+case $# in
+  "1"|"0")
+    usage
+    exit 1;;
+  "2")
+    echo "";;
+  "3")
+    echo "";;
+  "*)")
+    echo "Too many arguments"
+    usage
+    exit 1;;
+esac
+case $1 in
+  $P1_PROJECT_NAME)
+    project='p1';;
+  $P2_PROJECT_NAME)
+    project='p2';;
+  $P3_PROJECT_NAME)
+    project='p3';;
+  *)
+    echo "You must specify a valid project name."
+    echo "Defined project names:"
+    echo "  - $P1_PROJECT_NAME"
+    echo "  - $P2_PROJECT_NAME"
+    echo "  - $P3_PROJECT_NAME"
+    exit 1;;
+esac
+set_variables
+echo "Using Project $project_name."
+case $2 in
+  "reinstall"|"restart"|"restore")
+    reinstall_project;;
+  "start")
+    if [[ -n $3 ]]; then
+      start_instance $2
+    else
+      start_project
+    fi;;
+  "stop"|"destroy")
+    if [[ -n $3 ]]; then
+      destroy_instance $2
+    else
+      destroy_project
+    fi;;
+  *)
+    echo "Unrecognized argument: $i"
+    usage
+    exit 1;;
+esac

@@ -1,0 +1,33 @@
+#cloud-config               
+# vim:syntax=yaml
+hostname: services1
+fqdn: services1.intrepid.com
+manage_etc_hosts: true
+debug: True                
+ssh_pwauth: True           
+disable_root: false        
+chpasswd:
+  list: |
+    root:redhat
+    cloud-user:test
+  expire: false
+runcmd:
+- sed -i'.orig' -e's/without-password/yes/' /etc/ssh/sshd_config
+- service sshd restart
+- iptables -A INPUT -i eth0 -p tcp --dport 22 -m state --state NEW,ESTABLISHED -j ACCEPT
+- curl 10.13.214.153/bashrc > /root/.bashrc
+- curl 10.13.214.153/bash_profile > /root/.bash_profile 
+- curl 10.13.214.153/vimrc > /root/.vimrc
+- curl 10.13.214.153/intrepid/installscript/openshift_services1.sh > /root/openshift_services1.sh
+- mkdir -p /etc/pki/product
+- curl 10.13.214.153/69.pem > /etc/pki/product/69.pem
+- subscription-manager register --username=<REDACTED> --password=<REDACTED>
+- subscription-manager attach --pool 8a85f9813cf493fe013d028b6cf75b5a --pool 8a85f9823e380572013e386863fd04af
+- subscription-manager repos --disable=*
+- subscription-manager repos --enable=rhel-6-server-rpms --enable=rhel-server-rhscl-6-rpms --enable=rhel-server-ose-1.2-infra-6-rpms
+- yum install openshift-enterprise-release wget vim-enhanced -y 
+- oo-admin-yum-validator -o 1.2 -r broker --fix-all
+- yum update -y 
+- sh /root/openshift_services1.sh
+- lokkit --port 22:tcp
+- reboot

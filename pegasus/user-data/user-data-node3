@@ -1,0 +1,33 @@
+#cloud-config               
+# vim:syntax=yaml
+hostname: node3
+fqdn: node3.pegasus.com
+manage_etc_hosts: true
+debug: True                
+ssh_pwauth: True           
+disable_root: false        
+chpasswd:
+  list: |
+    root:redhat
+    cloud-user:test
+  expire: false
+runcmd:
+- sed -i'.orig' -e's/without-password/yes/' /etc/ssh/sshd_config
+- service sshd restart
+- curl 10.13.214.153/bashrc > /root/.bashrc
+- curl 10.13.214.153/bash_profile > /root/.bash_profile 
+- curl 10.13.214.153/vimrc > /root/.vimrc
+- curl 10.13.214.153/pegasus/installscript/openshift_node3.sh > /root/openshift_node3.sh
+- mkdir -p /etc/pki/product
+- curl 10.13.214.153/69.pem > /etc/pki/product/69.pem
+- subscription-manager register --username=<REDACTED> --password=<REDACTED>
+- subscription-manager attach --pool 8a85f9813cf493fe013d028b6cf75b5a --pool 8a85f9823e380572013e386863fd04af
+- subscription-manager repos --disable=*
+- subscription-manager repos --enable=rhel-6-server-rpms --enable=rhel-server-rhscl-6-rpms --enable=jb-eap-6-for-rhel-6-server-rpms --enable=jb-ews-2-for-rhel-6-server-rpms --enable=rhel-6-server-ose-2.0-jbosseap-rpms --enable=rhel-6-server-ose-2.0-node-rpms --enable=rhel-6-server-ose-2.0-rhc-rpms
+- yum install openshift-enterprise-release wget vim-enhanced -y 
+- oo-admin-yum-validator -o 2.0 -r node -r node-eap --fix-all
+- yum update -y 
+- sh /root/openshift_node3.sh
+- sed -i 's/node_profile=small/node_profile=medium/' /etc/openshift/resource_limits.conf
+- sed -i "s/PUBLIC_IP=[0-9\.]*/PUBLIC_IP=10.10.73.39/" /etc/openshift/node.conf
+- reboot
